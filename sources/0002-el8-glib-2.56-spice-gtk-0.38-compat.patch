@@ -1,0 +1,26 @@
+--- a/plugins/spice/spice_plugin.c	2026-11-13 00:23:06.000000000 +1100
++++ b/plugins/spice/spice_plugin.c	2026-11-20 20:05:13.738072319 +1100
+@@ -460,7 +460,9 @@
+ 			if (!remmina_plugin_service->plugin_multimon_monitor_info(gp, index, NULL, &x, &y, &width, &height, &width_mm, &height_mm))
+ 				continue;
+ 			REMMINA_PLUGIN_DEBUG("sending monitor info#%d: %d,%d %dx%d", i , x, y, width, height);
++#if SPICE_GTK_CHECK_VERSION(0, 39, 0)
+ 			spice_main_channel_update_display_mm(SPICE_MAIN_CHANNEL(gpdata->main_channel), i, width_mm, height_mm, FALSE);
++#endif
+ 			spice_main_channel_update_display(SPICE_MAIN_CHANNEL(gpdata->main_channel), i, x, y, width, height, FALSE);
+ 		} else {
+ 			REMMINA_PLUGIN_DEBUG("not sending monitor info#%d", i);
+--- a/src/rcw.c	2026-11-13 00:23:06.000000000 +1100
++++ b/src/rcw.c	2026-11-20 20:05:13.733072272 +1100
+@@ -78,6 +78,11 @@
+ #define DEBUG_KB_GRABBING 0
+ #include "remmina_exec.h"
+ 
++/* G_SOURCE_FUNC is GLib >= 2.58; EL8 ships 2.56 */
++#ifndef G_SOURCE_FUNC
++#define G_SOURCE_FUNC(f) ((GSourceFunc)(void (*)(void))(f))
++#endif
++
+ gchar *remmina_pref_file;
+ RemminaPref remmina_pref;
+ 
