@@ -1,5 +1,8 @@
 # remmina-copr
 
+Source: https://github.com/wrouesnel/remmina-copr
+Packages: https://copr.fedorainfracloud.org/coprs/wrouesnel/remmina-el8/
+
 Current Remmina and FreeRDP 3 for EL8 (RHEL/Alma/Rocky 8), with the full RDP
 GFX pipeline including H.264 (AVC420/AVC444). EPEL8 stops at Remmina 1.4.33
 on FreeRDP 2.11.
@@ -43,6 +46,32 @@ on FreeRDP 2.11.
 `build.sh` runs `rpmbuild` in an `almalinux:8` container (podman) with EPEL and
 PowerTools enabled. It downloads Source0 into `sources/`. RPMs in `out/repo/`
 are offered to the build as a local repo.
+
+## Releasing
+
+Releases go to COPR through GitHub Actions (`.github/workflows/release.yml`):
+
+1. Bump `Version`/`Release` in the spec and add a `%changelog` entry. Check it
+   builds with `./build.sh <spec>`.
+2. Commit, then push a tag named `<package>-<version>-<release>`, without the
+   dist tag:
+
+       git tag -s remmina-1.4.44-3 -m "remmina 1.4.44-3"
+       git push origin main remmina-1.4.44-3
+
+3. The workflow checks the tag against the spec, builds the SRPM on
+   AlmaLinux 8, builds it in COPR (`wrouesnel/remmina-el8`), waits for the
+   result, and creates a GitHub release with the SRPM and the COPR build link.
+
+Release `freerdp3` first when both change: Remmina builds against the
+`freerdp3` already in COPR. To build an SRPM without publishing, run the
+workflow by hand (Actions → Release to COPR → Run workflow) and leave
+"Submit" unticked. The SRPM is kept as a workflow artifact.
+
+The workflow needs a `COPR_CONFIG` repository secret holding a copr-cli
+config file (`~/.config/copr`) for an account that can build in the project.
+COPR API tokens expire after about 180 days, so update the secret when the
+token is renewed.
 
 ## Verified
 

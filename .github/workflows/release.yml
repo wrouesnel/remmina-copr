@@ -1,0 +1,119 @@
+name: Release to COPR
+
+# Push a tag named <package>-<version>-<release> (for example
+# remmina-1.4.44-2) to build that spec's SRPM on AlmaLinux 8, build it in
+# COPR, and publish a GitHub release with the SRPM attached.
+#
+# Run the workflow by hand to build an SRPM without publishing it, or to
+# resubmit one to COPR.
+
+on:
+  push:
+    tags:
+      - 'freerdp3-*'
+      - 'remmina-*'
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Spec to build
+        type: choice
+        options: [freerdp3, remmina]
+      submit:
+        description: Submit the SRPM to COPR (otherwise only build it)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  COPR_PROJECT: wrouesnel/remmina-el8
+
+concurrency:
+  group: copr-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick package
+        id: pkg
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          INPUT_PACKAGE: ${{ inputs.package }}
+        run: |
+          if [ -n "$TAG" ]; then pkg=${TAG%-*-*}; else pkg=$INPUT_PACKAGE; fi
+          if [ ! -f "$pkg.spec" ]; then
+            echo "::error::No spec file $pkg.spec"
+            exit 1
+          fi
+          echo "package=$pkg" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build SRPM on AlmaLinux 8
+        id: srpm
+        env:
+          PKG: ${{ steps.pkg.outputs.package }}
+          TAG: ${{ steps.pkg.outputs.tag }}
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w -e PKG -e TAG -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            docker.io/library/almalinux:8 bash -euo pipefail -c '
+              dnf -y -q install rpm-build rpmdevtools
+              nvr=$(rpmspec -q --srpm --undefine dist --qf "%{name}-%{version}-%{release}" "$PKG.spec")
+              echo "Spec is $nvr"
+              if [ -n "$TAG" ] && [ "$TAG" != "$nvr" ]; then
+                echo "::error::Tag $TAG does not match $PKG.spec ($nvr)"
+                exit 1
+              fi
+              spectool -g -C sources "$PKG.spec"
+              rpmbuild -bs --define "_sourcedir /w/sources" --define "_srcrpmdir /w/srpm" "$PKG.spec"
+              chown -R "$HOST_UID:$HOST_GID" srpm sources
+            '
+          srpm=$(ls srpm/*.src.rpm)
+          echo "path=$srpm" >> "$GITHUB_OUTPUT"
+          echo "Built $srpm"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pkg.outputs.package }}-srpm
+          path: srpm/*.src.rpm
+
+      - name: Build in COPR
+        id: copr
+        if: github.ref_type == 'tag' || inputs.submit
+        env:
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+          SRPM: ${{ steps.srpm.outputs.path }}
+        run: |
+          if [ -z "$COPR_CONFIG" ]; then
+            echo "::error::The COPR_CONFIG secret (a copr-cli config file) is not set"
+            exit 1
+          fi
+          pipx install --quiet copr-cli
+          cfg="$RUNNER_TEMP/copr"
+          trap 'rm -f "$cfg"' EXIT
+          (umask 077 && printf '%s\n' "$COPR_CONFIG" > "$cfg")
+          # copr-cli waits for the build and fails if it fails.
+          copr-cli --config "$cfg" build "$COPR_PROJECT" "$SRPM" | tee "$RUNNER_TEMP/copr.log"
+          id=$(sed -n 's/^Created builds: //p' "$RUNNER_TEMP/copr.log")
+          echo "url=https://copr.fedorainfracloud.org/coprs/build/$id" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.pkg.outputs.tag }}
+          SRPM: ${{ steps.srpm.outputs.path }}
+          BUILD_URL: ${{ steps.copr.outputs.url }}
+        run: |
+          notes="Built in COPR: $BUILD_URL
+
+          Install: \`dnf copr enable $COPR_PROJECT\` (see the README)."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$SRPM" --clobber
+          else
+            gh release create "$TAG" "$SRPM" --title "$TAG" --notes "$notes" --verify-tag
+          fi
