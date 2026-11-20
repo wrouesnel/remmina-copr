@@ -1,0 +1,46 @@
+#!/bin/bash
+# Install Cisco's prebuilt OpenH264 so FreeRDP 3 can decode H.264 (RDP GFX
+# AVC420/AVC444). Cisco's binary is the one covered by their MPEG LA patent
+# license, so this repository downloads it instead of shipping it.
+#
+# Usage: freerdp3-install-openh264 [--remove]
+set -euo pipefail
+
+VERSION=2.7.0
+SONAME=libopenh264.so.8
+URL=https://ciscobinary.openh264.org/libopenh264-${VERSION}-linux64.8.so.bz2
+SHA256=44ad0dd2c5af2bac84d26f89f2eb4e268708b8739323d15d33837f7221ce4980
+DEST=/usr/lib64/openh264-cisco
+CONF=/etc/ld.so.conf.d/openh264-cisco-x86_64.conf
+
+if [ "$(id -u)" -ne 0 ]; then
+	echo "Run as root." >&2
+	exit 1
+fi
+
+if [ "${1:-}" = "--remove" ]; then
+	rm -rf "$DEST" "$CONF"
+	ldconfig
+	echo "Removed Cisco OpenH264."
+	exit 0
+fi
+
+if [ "$(uname -m)" != x86_64 ]; then
+	echo "Only x86_64 is supported." >&2
+	exit 1
+fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+echo "Downloading $URL"
+curl -fsSL -o "$tmp/lib.bz2" "$URL"
+echo "$SHA256  $tmp/lib.bz2" | sha256sum -c --quiet -
+bunzip2 "$tmp/lib.bz2"
+
+install -d -m 0755 "$DEST"
+install -m 0755 "$tmp/lib" "$DEST/libopenh264.so.$VERSION"
+ln -sf "libopenh264.so.$VERSION" "$DEST/$SONAME"
+echo "$DEST" > "$CONF"
+ldconfig
+echo "Installed Cisco OpenH264 $VERSION to $DEST ($SONAME)."
+echo "OpenH264 Video Codec provided by Cisco Systems, Inc."

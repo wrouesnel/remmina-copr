@@ -1,6 +1,6 @@
-# Build the RDP plugin against FreeRDP 3 (needs the freerdp3 package from this
-# repo) instead of RHEL 8's FreeRDP 2.11: rpmbuild --with freerdp3
-%bcond_with freerdp3
+# The RDP plugin builds against FreeRDP 3 (the freerdp3 package from this
+# repo). Use --without freerdp3 to build against RHEL 8's FreeRDP 2.11.
+%bcond_without freerdp3
 
 # Build out of tree: cmake/FindKDEProtocols.cmake copies an unprocessed
 # config.h.in to ${CMAKE_BINARY_DIR}/config.h, which in EL8's default
@@ -9,7 +9,7 @@
 
 Name: remmina
 Version: 1.4.44
-Release: 1%{?dist}
+Release: 2%{?dist}
 Summary: Remote Desktop Client
 License: GPL-2.0-or-later and MIT
 URL: https://remmina.org
@@ -51,6 +51,8 @@ BuildRequires: pkgconfig(avahi-ui-gtk3)
 BuildRequires: pkgconfig(freerdp3) >= 3.3.0
 BuildRequires: pkgconfig(freerdp-client3)
 BuildRequires: pkgconfig(winpr3)
+# WinPR3Targets.cmake references /usr/bin/winpr-makecert3 from this package
+BuildRequires: freerdp3
 %else
 BuildRequires: pkgconfig(freerdp2)
 # WinPR2Targets.cmake references /usr/bin/winpr-makecert from this package
@@ -364,6 +366,10 @@ appstream-util validate-relax --nonet %{buildroot}/%{_datadir}/metainfo/*.appdat
 %{_mandir}/man1/remmina-gnome.1*
 
 %changelog
+* Fri Nov 20 2026 remmina-el8 COPR <noreply@localhost> - 1.4.44-2
+- Build the RDP plugin against FreeRDP 3 (freerdp3) by default, for GFX
+  H.264 (AVC420/AVC444) support.
+
 * Fri Nov 20 2026 remmina-el8 COPR <noreply@localhost> - 1.4.44-1
 - Backport upstream 1.4.44 to EL8 (from the EPEL8 1.4.33 spec).
 - Add libcurl and fuse3 BuildRequires needed by newer releases, and freerdp
