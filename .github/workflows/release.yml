@@ -37,7 +37,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Pick package
         id: pkg
@@ -76,7 +76,7 @@ jobs:
           echo "path=$srpm" >> "$GITHUB_OUTPUT"
           echo "Built $srpm"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.pkg.outputs.package }}-srpm
           path: srpm/*.src.rpm
